@@ -117,11 +117,11 @@ void ComplementaryFilterROS::initializeParams()
   if (!nh_private_.getParam("do_adaptive_gain", do_adaptive_gain))
     do_adaptive_gain = true;
   if (!nh_private_.getParam("bias_angular_velocity_x_threshold", bias_k_angular_velocity_x_threshold))
-    bias_k_angular_velocity_x_threshold = 0.2;
+    bias_k_angular_velocity_x_threshold = 0.01;
   if (!nh_private_.getParam("bias_angular_velocity_y_threshold", bias_k_angular_velocity_y_threshold))
-    bias_k_angular_velocity_y_threshold = 0.2;
+    bias_k_angular_velocity_y_threshold = 0.01;
   if (!nh_private_.getParam("bias_angular_velocity_z_threshold", bias_k_angular_velocity_z_threshold))
-    bias_k_angular_velocity_z_threshold = 0.2;
+    bias_k_angular_velocity_z_threshold = 0.01;
   if (!nh_private_.getParam("bias_k_acceleration_threshold", bias_k_acceleration_threshold))
     bias_k_acceleration_threshold = 0.1;
   if (!nh_private_.getParam("bias_k_delta_angular_velocity_threshold", bias_k_delta_angular_velocity_threshold))
