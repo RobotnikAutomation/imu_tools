@@ -43,6 +43,7 @@ const double ComplementaryFilter::gamma_ = 0.01;
 const double ComplementaryFilter::kAngularVelocityThreshold = 0.2;
 const double ComplementaryFilter::kAccelerationThreshold = 0.1;
 const double ComplementaryFilter::kDeltaAngularVelocityThreshold = 0.01;
+const double ComplementaryFilter::kAngularVelocityDrift = 0.005;
 
 ComplementaryFilter::ComplementaryFilter()
   : gain_acc_(0.01)
@@ -52,6 +53,7 @@ ComplementaryFilter::ComplementaryFilter()
   , do_adaptive_gain_(false)
   , initialized_(false)
   , steady_state_(false)
+  , previous_steady_state_(false)
   , q0_(1)
   , q1_(0)
   , q2_(0)
@@ -62,7 +64,16 @@ ComplementaryFilter::ComplementaryFilter()
   , wx_bias_(0)
   , wy_bias_(0)
   , wz_bias_(0)
+  , k_angular_velocity_x_threshold_(kAngularVelocityThreshold)
+  , k_angular_velocity_y_threshold_(kAngularVelocityThreshold)
+  , k_angular_velocity_z_threshold_(kAngularVelocityThreshold)
+  , k_acceleration_threshold_(kAccelerationThreshold)
+  , k_delta_angular_velocity_threshold_(kDeltaAngularVelocityThreshold)
+  , k_angular_velocity_x_drift_(kAngularVelocityDrift)
+  , k_angular_velocity_y_drift_(kAngularVelocityDrift)
+  , k_angular_velocity_z_drift_(kAngularVelocityDrift)
 {
+  t_hysteris_steady_state_ = ros::Time(0);
 }
 
 ComplementaryFilter::~ComplementaryFilter()
@@ -249,32 +260,141 @@ void ComplementaryFilter::update(double ax, double ay, double az, double wx, dou
   normalizeQuaternion(q0_, q1_, q2_, q3_);
 }
 
-bool ComplementaryFilter::checkState(double ax, double ay, double az, double wx, double wy, double wz) const
+int ComplementaryFilter::checkState(double ax, double ay, double az, double wx, double wy, double wz) const
 {
   double acc_magnitude = sqrt(ax * ax + ay * ay + az * az);
-  if (fabs(acc_magnitude - kGravity) > kAccelerationThreshold)
-    return false;
+  double acc_diff = acc_magnitude - kGravity;
+  if (fabs(acc_diff) > k_acceleration_threshold_)
+  {
+    ROS_WARN_THROTTLE(1, "FALSE: acc_diff (%.4lf) (threshold %.4lf)", acc_diff, k_acceleration_threshold_);
+    return 1;
+  }
 
-  if (fabs(wx - wx_prev_) > kDeltaAngularVelocityThreshold || fabs(wy - wy_prev_) > kDeltaAngularVelocityThreshold ||
-      fabs(wz - wz_prev_) > kDeltaAngularVelocityThreshold)
-    return false;
+  double wx_diff = wx - wx_prev_;
+  double wy_diff = wy - wy_prev_;
+  double wz_diff = wz - wz_prev_;
 
-  if (fabs(wx - wx_bias_) > kAngularVelocityThreshold || fabs(wy - wy_bias_) > kAngularVelocityThreshold ||
-      fabs(wz - wz_bias_) > kAngularVelocityThreshold)
-    return false;
+  if (fabs(wx_diff) > k_delta_angular_velocity_threshold_ || fabs(wy_diff) > k_delta_angular_velocity_threshold_ ||
+      fabs(wz_diff) > k_delta_angular_velocity_threshold_)
+  {
+    ROS_WARN_THROTTLE(1, "FALSE: w (%.4lf, %.4lf, %.4lf) - w_diffs (%.4lf, %.4lf, %.4lf) (threshold %.4lf) ", wx, wy,
+                      wz, wx_diff, wy_diff, wz_diff, k_delta_angular_velocity_threshold_);
+    return 2;
+  }
+  double wx_bias_diff = wx - wx_bias_;
+  double wy_bias_diff = wy - wy_bias_;
+  double wz_bias_diff = wz - wz_bias_;
 
-  return true;
+  /*  if (fabs(wx_bias_diff) > k_angular_velocity_x_threshold_ || fabs(wy_bias_diff) > k_angular_velocity_y_threshold_
+    || fabs(wz_bias_diff) > k_angular_velocity_z_threshold_)
+    {
+      ROS_WARN_THROTTLE(1, "FALSE: w (%.4lf, %.4lf, %.4lf) - w_diffs (%.4lf, %.4lf, %.4lf) (threshold %.4lf) ", wx, wy,
+                        wz, wx_diff, wy_diff, wz_diff, k_delta_angular_velocity_threshold_);
+      ROS_WARN_THROTTLE(1, "FALSE: w_bias_diff (%.4lf, %.4lf, %.4lf) (threshold %.4lf) - bias (%.4lf, %.4lf, %.4lf)",
+                        wx_bias_diff, wy_bias_diff, wz_bias_diff, k_angular_velocity_z_threshold_, wx_bias_, wy_bias_,
+                        wz_bias_);
+
+      return 3;
+    }*/
+  if (fabs(wx_bias_diff) > k_angular_velocity_x_threshold_)
+  {
+    ROS_WARN_THROTTLE(1, "FALSE: wx (%.4lf) - w_diffs (%.4lf) (threshold %.4lf) ", wx, wx_diff,
+                      k_delta_angular_velocity_threshold_);
+    ROS_WARN_THROTTLE(1, "FALSE: w_bias_diff (%.4lf) (threshold %.4lf) - bias (%.4lf)", wx_bias_diff,
+                      k_angular_velocity_x_threshold_, wx_bias_);
+
+    return 3;
+  }
+  if (fabs(wy_bias_diff) > k_angular_velocity_y_threshold_)
+  {
+    ROS_WARN_THROTTLE(1, "FALSE: wy (%.4lf) - w_diffs (%.4lf) (threshold %.4lf) ", wy, wy_diff,
+                      k_delta_angular_velocity_threshold_);
+    ROS_WARN_THROTTLE(1, "FALSE: w_bias_diff (%.4lf) (threshold %.4lf) - bias (%.4lf)", wy_bias_diff,
+                      k_angular_velocity_y_threshold_, wy_bias_);
+
+    return 4;
+  }
+  if (fabs(wz_bias_diff) > k_angular_velocity_z_threshold_)
+  {
+    ROS_WARN_THROTTLE(1, "FALSE: wz (%.4lf) - w_diffs (%.4lf) (threshold %.4lf) ", wz, wz_diff,
+                      k_delta_angular_velocity_threshold_);
+    ROS_WARN_THROTTLE(1, "FALSE: w_bias_diff (%.4lf) (threshold %.4lf) - bias (%.4lf)", wz_bias_diff,
+                      k_angular_velocity_z_threshold_, wz_bias_);
+
+    return 5;
+  }
+  /*ROS_INFO_THROTTLE(0.1, "acc_diff (%.4lf) (threshold %.4lf)", acc_diff, k_acceleration_threshold_);
+  ROS_INFO_THROTTLE(0.1, "w (%.4lf, %.4lf, %.4lf) - w_diffs (%.4lf, %.4lf, %.4lf) (threshold %.4lf) ", wx, wy, wz,
+                    wx_diff, wy_diff, wz_diff, k_delta_angular_velocity_threshold_);
+  ROS_INFO_THROTTLE(0.1,
+                    "w_bias_diff (%.4lf, %.4lf, %.4lf) (threshold %.4lf, %.4lf, %.4lf) - bias (%.4lf, %.4lf, %.4lf)",
+                    wx_bias_diff, wy_bias_diff, wz_bias_diff, k_angular_velocity_x_threshold_,
+                    k_angular_velocity_y_threshold_, k_angular_velocity_z_threshold_, wx_bias_, wy_bias_, wz_bias_);
+  */
+  return 0;
 }
 
 void ComplementaryFilter::updateBiases(double ax, double ay, double az, double wx, double wy, double wz)
 {
-  steady_state_ = checkState(ax, ay, az, wx, wy, wz);
+  int ret = checkState(ax, ay, az, wx, wy, wz);
+
+  bool aux_steady_state = (ret == 0);
+
+  if (aux_steady_state == true)
+  {
+    if (previous_steady_state_ == false)
+    {
+      if (ros::Time::now() - t_hysteris_steady_state_ > ros::Duration(0.1))
+      {
+        previous_steady_state_ = steady_state_ = true;
+        t_hysteris_steady_state_ = ros::Time::now();
+      }
+    }
+    else
+    {
+      previous_steady_state_ = steady_state_ = true;
+      t_hysteris_steady_state_ = ros::Time::now();
+    }
+  }
+  else
+  {
+    previous_steady_state_ = steady_state_ = false;
+    t_hysteris_steady_state_ = ros::Time::now();
+  }
 
   if (steady_state_)
   {
     wx_bias_ += bias_alpha_ * (wx - wx_bias_);
     wy_bias_ += bias_alpha_ * (wy - wy_bias_);
     wz_bias_ += bias_alpha_ * (wz - wz_bias_);
+  }
+  else
+  {
+    // To avoid continuous drift in case k_angular_thresholds are small
+    if (ret == 3)
+    {
+      if (fabs(wx) < fabs(wx_bias_) && fabs(wx) <= k_angular_velocity_x_drift_)
+      {
+        ROS_ERROR("wx (%.4lf) < wx_bias (%.4lf)", wx, wx_bias_);
+        wx_bias_ = 0.0;
+      }
+    }
+    if (ret == 4)
+    {
+      if (fabs(wy) < fabs(wy_bias_) && fabs(wy) <= k_angular_velocity_y_drift_)
+      {
+        ROS_ERROR("wy (%.4lf) < wy_bias (%.4lf)", wy, wy_bias_);
+        wy_bias_ = 0.0;
+      }
+    }
+    if (ret == 5)
+    {
+      if (fabs(wz) < fabs(wz_bias_) && fabs(wz) <= k_angular_velocity_z_drift_)
+      {
+        ROS_ERROR("wz (%.4lf) < wz_bias (%.4lf)", wz, wz_bias_);
+        wz_bias_ = 0.0;
+      }
+    }
   }
 
   wx_prev_ = wx;
@@ -434,6 +554,30 @@ double ComplementaryFilter::getAdaptiveGain(double alpha, double ax, double ay, 
     factor = 0.0;
   // printf("FACTOR: %f \n", factor);
   return factor * alpha;
+}
+
+void ComplementaryFilter::setAngularVelocityThreshold(double x, double y, double z)
+{
+  k_angular_velocity_x_threshold_ = x;
+  k_angular_velocity_y_threshold_ = y;
+  k_angular_velocity_z_threshold_ = z;
+}
+
+void ComplementaryFilter::setAngularVelocityDrift(double x, double y, double z)
+{
+  k_angular_velocity_x_drift_ = x;
+  k_angular_velocity_y_drift_ = y;
+  k_angular_velocity_z_drift_ = z;
+}
+
+void ComplementaryFilter::setDeltaAngularVelocityThreshold(double a)
+{
+  k_delta_angular_velocity_threshold_ = a;
+}
+
+void ComplementaryFilter::setAccelerationThreshold(double a)
+{
+  k_acceleration_threshold_ = a;
 }
 
 void normalizeVector(double& x, double& y, double& z)

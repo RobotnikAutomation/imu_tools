@@ -55,6 +55,8 @@ ComplementaryFilterROS::ComplementaryFilterROS(const ros::NodeHandle& nh, const 
     if (filter_.getDoBiasEstimation())
     {
       state_publisher_ = nh_.advertise<std_msgs::Bool>(ros::names::resolve("imu") + "/steady_state", queue_size);
+      angular_velocity_bias_publisher_ =
+          nh_.advertise<geometry_msgs::Vector3Stamped>("imu/angular_velocity_bias", queue_size);
     }
   }
 
@@ -87,6 +89,10 @@ void ComplementaryFilterROS::initializeParams()
   bool do_bias_estimation;
   double bias_alpha;
   bool do_adaptive_gain;
+  double bias_k_angular_velocity_x_threshold, bias_k_angular_velocity_y_threshold, bias_k_angular_velocity_z_threshold;
+  double bias_k_acceleration_threshold;
+  double bias_k_delta_angular_velocity_threshold;
+  double bias_k_angular_velocity_x_drift, bias_k_angular_velocity_y_drift, bias_k_angular_velocity_z_drift;
 
   if (!nh_private_.getParam("fixed_frame", fixed_frame_))
     fixed_frame_ = "odom";
@@ -110,7 +116,22 @@ void ComplementaryFilterROS::initializeParams()
     bias_alpha = 0.01;
   if (!nh_private_.getParam("do_adaptive_gain", do_adaptive_gain))
     do_adaptive_gain = true;
-
+  if (!nh_private_.getParam("bias_angular_velocity_x_threshold", bias_k_angular_velocity_x_threshold))
+    bias_k_angular_velocity_x_threshold = 0.2;
+  if (!nh_private_.getParam("bias_angular_velocity_y_threshold", bias_k_angular_velocity_y_threshold))
+    bias_k_angular_velocity_y_threshold = 0.2;
+  if (!nh_private_.getParam("bias_angular_velocity_z_threshold", bias_k_angular_velocity_z_threshold))
+    bias_k_angular_velocity_z_threshold = 0.2;
+  if (!nh_private_.getParam("bias_k_acceleration_threshold", bias_k_acceleration_threshold))
+    bias_k_acceleration_threshold = 0.1;
+  if (!nh_private_.getParam("bias_k_delta_angular_velocity_threshold", bias_k_delta_angular_velocity_threshold))
+    bias_k_delta_angular_velocity_threshold = 0.01;
+  if (!nh_private_.getParam("bias_k_angular_velocity_x_drift", bias_k_angular_velocity_x_drift))
+    bias_k_angular_velocity_x_drift = 0.005;
+  if (!nh_private_.getParam("bias_k_angular_velocity_y_drift", bias_k_angular_velocity_y_drift))
+    bias_k_angular_velocity_y_drift = 0.005;
+  if (!nh_private_.getParam("bias_k_angular_velocity_z_drift", bias_k_angular_velocity_z_drift))
+    bias_k_angular_velocity_z_drift = 0.005;
   double orientation_stddev;
   if (!nh_private_.getParam("orientation_stddev", orientation_stddev))
     orientation_stddev = 0.0;
@@ -119,6 +140,12 @@ void ComplementaryFilterROS::initializeParams()
 
   filter_.setDoBiasEstimation(do_bias_estimation);
   filter_.setDoAdaptiveGain(do_adaptive_gain);
+  filter_.setDeltaAngularVelocityThreshold(bias_k_delta_angular_velocity_threshold);
+  filter_.setAngularVelocityThreshold(bias_k_angular_velocity_x_threshold, bias_k_angular_velocity_y_threshold,
+                                      bias_k_angular_velocity_z_threshold);
+  filter_.setAngularVelocityDrift(bias_k_angular_velocity_x_drift, bias_k_angular_velocity_y_drift,
+                                  bias_k_angular_velocity_z_drift);
+  filter_.setAccelerationThreshold(bias_k_acceleration_threshold);
 
   if (!filter_.setGainAcc(gain_acc))
     ROS_WARN("Invalid gain_acc passed to ComplementaryFilter.");
@@ -261,6 +288,12 @@ void ComplementaryFilterROS::publish(const sensor_msgs::Imu::ConstPtr& imu_msg_r
       std_msgs::Bool state_msg;
       state_msg.data = filter_.getSteadyState();
       state_publisher_.publish(state_msg);
+      geometry_msgs::Vector3Stamped angular_velocity_bias_msg;
+      angular_velocity_bias_msg.header = imu_msg_raw->header;
+      angular_velocity_bias_msg.vector.x = filter_.getAngularVelocityBiasX();
+      angular_velocity_bias_msg.vector.y = filter_.getAngularVelocityBiasY();
+      angular_velocity_bias_msg.vector.z = filter_.getAngularVelocityBiasZ();
+      angular_velocity_bias_publisher_.publish(angular_velocity_bias_msg);
     }
   }
 

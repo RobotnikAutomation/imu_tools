@@ -73,6 +73,7 @@ private:
   ros::Publisher imu_publisher_;
   ros::Publisher rpy_publisher_;
   ros::Publisher state_publisher_;
+  ros::Publisher angular_velocity_bias_publisher_;
   tf::TransformBroadcaster tf_broadcaster_;
 
   // Parameters:

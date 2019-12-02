@@ -29,6 +29,8 @@
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <ros/ros.h>
+
 #ifndef IMU_TOOLS_COMPLEMENTARY_FILTER_H
 #define IMU_TOOLS_COMPLEMENTARY_FILTER_H
 
@@ -84,6 +86,15 @@ public:
   void update(double ax, double ay, double az, double wx, double wy, double wz, double mx, double my, double mz,
               double dt);
 
+  // Set the value for the angular velocity threshold, used for bias estimation
+  void setAngularVelocityThreshold(double x, double y, double z);
+  // Set the value for the angular velocity drift, used for bias estimation
+  void setAngularVelocityDrift(double x, double y, double z);
+  // Set the value for the delta angular velocity threshold, used for bias estimation
+  void setDeltaAngularVelocityThreshold(double a);
+  // Set the value for the acceleration threshold, used for bias estimation
+  void setAccelerationThreshold(double a);
+
 private:
   static const double kGravity;
   static const double gamma_;
@@ -91,6 +102,19 @@ private:
   static const double kAngularVelocityThreshold;
   static const double kAccelerationThreshold;
   static const double kDeltaAngularVelocityThreshold;
+  static const double kAngularVelocityDrift;
+
+  // Parameters for bias estimation steady state thresholds
+  double k_angular_velocity_x_threshold_;
+  double k_angular_velocity_y_threshold_;
+  double k_angular_velocity_z_threshold_;
+  double k_acceleration_threshold_;
+  double k_delta_angular_velocity_threshold_;
+
+  // angular velocity drift of the sensor
+  double k_angular_velocity_x_drift_;
+  double k_angular_velocity_y_drift_;
+  double k_angular_velocity_z_drift_;
 
   // Gain parameter for the complementary filter, belongs in [0, 1].
   double gain_acc_;
@@ -106,7 +130,8 @@ private:
   bool do_adaptive_gain_;
 
   bool initialized_;
-  bool steady_state_;
+  bool steady_state_, previous_steady_state_;
+  ros::Time t_hysteris_steady_state_;
 
   // The orientation as a Hamilton quaternion (q0 is the scalar). Represents
   // the orientation of the fixed frame wrt the body frame.
@@ -120,7 +145,7 @@ private:
 
   void updateBiases(double ax, double ay, double az, double wx, double wy, double wz);
 
-  bool checkState(double ax, double ay, double az, double wx, double wy, double wz) const;
+  int checkState(double ax, double ay, double az, double wx, double wy, double wz) const;
 
   void getPrediction(double wx, double wy, double wz, double dt, double& q0_pred, double& q1_pred, double& q2_pred,
                      double& q3_pred) const;
