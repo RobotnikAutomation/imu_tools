@@ -35,7 +35,7 @@ Download the stack from our repository into your catkin workspace (e.g.,
 
     git clone -b <distro> https://github.com/ccny-ros-pkg/imu_tools.git
 
-Install any dependencies using [rosdep](http://www.ros.org/wiki/rosdep).
+Install any dependencies using [rosdep](http://wiki.ros.org/rosdep).
 
     rosdep install imu_tools
 
