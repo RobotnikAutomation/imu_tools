@@ -162,9 +162,9 @@ static inline void compensateMagneticDistortion(
 
 
 ImuFilter::ImuFilter() :
+    gain_ (0.0), zeta_ (0.0), world_frame_(WorldFrame::ENU),
     q0(1.0), q1(0.0), q2(0.0), q3(0.0),
-    w_bx_(0.0), w_by_(0.0), w_bz_(0.0),
-    zeta_ (0.0), gain_ (0.0), world_frame_(WorldFrame::ENU)
+    w_bx_(0.0), w_by_(0.0), w_bz_(0.0)
 {
 }
 
@@ -260,7 +260,6 @@ void ImuFilter::madgwickAHRSupdateIMU(
     float ax, float ay, float az,
     float dt)
 {
-  float recipNorm;
   float s0, s1, s2, s3;
   float qDot1, qDot2, qDot3, qDot4;
 
@@ -308,4 +307,32 @@ void ImuFilter::madgwickAHRSupdateIMU(
 
   // Normalise quaternion
   normalizeQuaternion (q0, q1, q2, q3);
+}
+
+
+void ImuFilter::getGravity(float& rx, float& ry, float& rz,
+    float gravity)
+{
+    // Estimate gravity vector from current orientation
+    switch (world_frame_) {
+      case WorldFrame::NED:
+        // Gravity: [0, 0, -1]
+        rotateAndScaleVector(q0, q1, q2, q3,
+            0.0, 0.0, -2.0*gravity,
+            rx, ry, rz);
+        break;
+      case WorldFrame::NWU:
+        // Gravity: [0, 0, 1]
+        rotateAndScaleVector(q0, q1, q2, q3,
+            0.0, 0.0, 2.0*gravity,
+            rx, ry, rz);
+        break;
+      default:
+      case WorldFrame::ENU:
+        // Gravity: [0, 0, 1]
+        rotateAndScaleVector(q0, q1, q2, q3,
+            0.0, 0.0, 2.0*gravity,
+            rx, ry, rz);
+        break;
+    }
 }

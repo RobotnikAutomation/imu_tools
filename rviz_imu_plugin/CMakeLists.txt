@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5.1)
+cmake_policy(SET CMP0048 NEW)
 project(rviz_imu_plugin)
 
 find_package(catkin REQUIRED COMPONENTS rviz)
@@ -46,6 +47,8 @@ set(SRC_FILES  src/imu_display.cpp
 
 ## Build libraries
 add_library(${PROJECT_NAME} ${SRC_FILES})
+
+set_target_properties(${PROJECT_NAME} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 ## Link the library with whatever Qt libraries have been defined by
 ## the ``find_package(Qt4 ...)`` line above, or by the
